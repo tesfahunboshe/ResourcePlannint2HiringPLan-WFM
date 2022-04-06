@@ -56,8 +56,9 @@ ui <- fluidPage(theme = shinytheme("spacelab"),
         
         column(6,
                h2("Schedule Shells"),
-               dataTableOutput("scheduleshells"),
-               downloadButton('download',"Download")),
+               downloadButton('download',"Download"),
+               dataTableOutput("scheduleshells")
+               ),
                
         
       ),

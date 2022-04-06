@@ -76,7 +76,11 @@ server <- function(input, output) {
   
   
   
-  output$capplan <- renderDataTable(cap_plan()[,-8])
+  output$capplan <- renderDataTable(
+                
+                  cap_plan()[,-8],
+                  rownames= FALSE
+                )
   
   n = 0
   DaysCombo <- reactive(
@@ -202,14 +206,13 @@ output$Efficiency <- renderText(
 
 #schedule shells
 output$scheduleshells <- renderDataTable(
-  {
-    combo()$sshells[,-1]
-  }
+  combo()$sshells,
+  rownames= FALSE
 ) 
 output$download <- downloadHandler(
   filename = function(){"thename.csv"}, 
   content = function(fname){
-    write.csv(thedata(), fname)
+    write.csv(combo()$sshells, fname)
   }
 )
 
