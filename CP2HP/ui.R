@@ -39,7 +39,9 @@ ui <- fluidPage(theme = shinytheme("spacelab"),
                    "Weekly working days:", value=5, min = 1, max = 7),
 
       tags$hr(),
-      textInput("eff_required", "Required Efficiency %:", value = "80 %"),
+      sliderInput("eff_required","Required Efficiency",min=0,max=1,value=0.8),
+      # textInput("eff_required", "Required Efficiency %:", value = "80 %"),
+      actionButton("Calculate", "Generate!"),
 
     ),
 
@@ -54,13 +56,15 @@ ui <- fluidPage(theme = shinytheme("spacelab"),
         
         column(6,
                h2("Schedule Shells"),
-               dataTableOutput("scheduleshells")),
+               dataTableOutput("scheduleshells"),
+               downloadButton('download',"Download")),
+               
         
       ),
       # Output: Coverage metrics and plot
       fluidRow(
         column(6,
-               h2("Heads Count"),
+               h2("Headcount"),
                h2(textOutput("HeadsCOunt"))),
         column(6,
                h2("Efficiency"),

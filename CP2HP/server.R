@@ -76,7 +76,7 @@ server <- function(input, output) {
   
   
   
-  output$capplan <- renderDataTable(cap_plan())
+  output$capplan <- renderDataTable(cap_plan()[,-8])
   
   n = 0
   DaysCombo <- reactive(
@@ -93,7 +93,7 @@ server <- function(input, output) {
     input$eff_required
   })
   
-combo_output <- reactive({
+combo_output <- eventReactive(input$Calculate, {
   
   ScheduleShells <- data.frame(AgentID = numeric(), days = numeric(),shift = numeric())
   TotalCoverage <- data.frame(matrix(0, ncol = 7, nrow = 24)) 
@@ -205,7 +205,14 @@ output$scheduleshells <- renderDataTable(
   {
     combo()$sshells[,-1]
   }
-)  
+) 
+output$download <- downloadHandler(
+  filename = function(){"thename.csv"}, 
+  content = function(fname){
+    write.csv(thedata(), fname)
+  }
+)
+
   ## Plot coverage
 output$coverageplots <- renderPlot({
 
