@@ -1,0 +1,325 @@
+---
+title: "From Capacity Plan To Hiring Plan"
+author: "Tesfahun Tegene Boshe"
+date: "4/7/2022"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    code_folding: show
+    keep_md: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, message=F,warning=F)
+```
+
+## Introduction
+
+Capacity planning involves calculations that finally tell you how many FTE's you will need in every interval. **FTE** is an abbreviation for a full time equivalent. In the simplest terms, an FTE hours is equal to the number of hours a full time agent delivers in a certain time range. This means that FTE hours depends on the time range in question. An FTE delivers 30 mins within 30 mins range and 1 hour within 1 hour range. Anything less than would not be an FTE. 
+
+Per interval FTE's need to be converted to daily and then weekly/monthly FTE's since the workforce schedule is usually created not for such small intervals rather for a week or a month. Examples of such calculations are given below. The more difficult task is, however, to convert the per interval FTE's to number of heads that we need to hire for healthy coverage in all intervals. 
+
+As promised, let's take a sample capacity plan output and see how to calculate  the number of FTE's for various interval length.  
+
+## Calculating FTEs
+
+Let's load the sample capacity plan file showing per interval number of fte's for days in January 2022. 
+
+```{r}
+
+cap_plan <- read.csv("capacityPlan.csv")
+
+library(DT)
+datatable(cap_plan)
+```
+
+We see that the number of FTE's changes from hour to hour. So how do we tell how many FTE's we need in an a certain time range? 
+
+**a. FTE's in the first 5 hours of January 1**
+
+Obviously a full timer who works in those 5 hours will work all 5 hours. Now the question is "how many such 5 hours do we have in the first 5 hours?". Does that sound like asking for the mean? Yes!
+
+```{r}
+
+(FTE_5hrs_jan1 <- sum(cap_plan$Jan.1[1:5])/5)  # every FTE does 5 hrs within 5 hrs.
+```
+
+
+**How manhy FTE's on January 1? **
+
+To answer this we need to know how many hours one full timer works in a day. We will assume it 8 as it is the case in most countries. 
+
+```{r}
+(FTE_Jan1 <- sum(cap_plan$Jan.1)/8)  # every FTE does 8 hrs
+
+```
+
+Likewise, we can find the number of daily FTE's for all days in using *Colsums* function. 
+
+```{r}
+(FTE_daily <- colSums(cap_plan[,-1])/8)  # exclude the interval column. 
+
+```
+
+See that FTE's count changes over day. 
+```{r}
+barplot(unlist(FTE_daily),
+        main = "FTE's per day")
+
+```
+
+Next step should be how to find out weekly FTE's. 
+
+**Weekly FTE's**
+
+Similarly, Weekly FTE's is calculated by dividing the weekly hours by the number of weekly hours of a full-timer employee. Let's assume a full-timer does 40 hours every week. These assumptions may change during holidays  or partially closed weeks. 
+
+```{r}
+
+Weekly_FTEs <- c(Week1 = sum(cap_plan[,c(2:8)])/40, # week1 days
+                 Week2 = sum(cap_plan[,c(9:15)])/40, # week2 days
+                 Week3 = sum(cap_plan[,c(16:22)])/40, # week3 days
+                 Week4 = sum(cap_plan[,c(23:29)])/40) # week4 days
+
+Weekly_FTEs
+```
+
+
+If you do not have per interval FTE's count, the weekly FTE's count can be calculated from an average daily FTE's by multipling the daily FTE's by the of total of working days in a week and then dividing by the number of weekly working days for a full-time employee. For instance, the multiplier is 7/5 if full-time employees work only 5 days a week in a 7-days a week work place. 
+
+This of course is assuming that all the days will have similar FTE count as the daily FTE. 
+
+**January total FTE's** 
+
+```{r}
+(Jan_FTEs <- sum(cap_plan[,-1])/160) # Jan 2022 has 21 week days with 1 holiday. Number of working days = 20
+
+```
+
+See that it is very similar to an average weekly FTE's. It is therefore an acceptable in most cases to use an average of weekly FTE's to find monthly FTE's count. 
+
+Does it mean that we will need only 24 heads for January? How many do we need to hire?
+
+## Hiring Plan
+
+How do we figure out the minimum **number of heads** and the **schedule** per head? This is not an easy task as there are almost unlimited possible combinations of headcount and schedule formats that can achieve certain coverage. How do we search for the best combination?
+
+### My algorithm
+
+I have recently worked on  an algorithm that linearly searches for the optimum days of the week and shift start combination per agent starting with the first agent. It does so by calculating the efficiency of staffing for every combination and at the same time adding the combination that achieves the best efficiency to the list of **shift shells**. The loop continues until the desired **staffing efficiency** is achieved or adding more agents does not improve the efficiency any more. 
+
+Let's take an average weekly FTE's distribution. 
+
+```{r, echo=FALSE}
+
+cap_plan <- read.csv("capacityPlan22.csv")
+cap_plan$Interval <- 0:23
+
+```
+
+
+Function computing the coverage for given set of schedule shells
+```{r}
+coverage <- function (sched)
+{
+  schedule1<- sched
+  schedule2<- sched
+  
+  # if end is less than start, end = end + 24. 
+  schedule1$TEnd <- ifelse(schedule1$Tstart > schedule1$TEnd, schedule1$TEnd + 24, schedule1$TEnd) 
+  
+  # 1 if working in that interval, 0 otherwise. 
+  for (i in c(0:23))
+  {
+    schedule1[as.character(i)] <- ifelse(schedule1$Tstart <= i & schedule1$TEnd > i, 1,0)
+  }
+  
+  
+  # schedule start is midnight. 
+  # take only those shifts that overflow. end = start =0 otherwise
+  schedule2$TEnd <- ifelse(schedule2$Tstart > schedule2$TEnd, schedule2$TEnd, 0)
+  schedule2$Tstart <- 0
+  
+  # the next day
+  schedule2$DStart <- schedule2$DStart + 1
+  schedule2$DEnd <- schedule2$DEnd + 1
+  
+  # 1 if working in that interval, 0 otherwise. 
+  for (i in c(0:23))
+  {
+    schedule2[as.character(i)] <- ifelse(schedule2$Tstart <= i & schedule2$TEnd > i, 1,0)
+  }
+  
+  
+  schedule_12 <- rbind(schedule1, schedule2) # bind the two parts
+  
+  covrge <- data.frame(matrix(ncol = 7, nrow = 24)) # column interval
+  colnames(covrge) <- lapply(1:7, paste0,"_Date")
+  
+  for (datee in 1:7)
+  {
+    covrge[paste0(datee,"_Date")] <- schedule_12 %>% filter(DStart==datee)%>% select(!(DStart:TEnd)) %>% colSums(na.rm = T)
+    
+  }
+  
+  return(covrge)
+  
+}
+
+```
+
+Function to check staffing efficiency in every iteration. 
+```{r}
+accuracy_F <- function(covrge,cap = cap_plan[,-8])
+{
+  accuracy <- 1 - (sum(abs(covrge-cap),na.rm = T)/sum(cap,na.rm = T))
+}
+
+```
+
+Initialization
+```{r}
+library(tidyverse)
+
+n = 0
+DaysCombo <- combn(1:7, 5)
+shiftLength <- 8
+ScheduleShells <- data.frame(AgentNumber = numeric(), days = numeric(),shift = numeric())
+TotalCoverage <- data.frame(matrix(0, ncol = 7, nrow = 24)) 
+colnames(TotalCoverage)=colnames(cap_plan)<- lapply(1:7, paste0,"_Date")
+
+totalEff <- 0
+
+```
+
+The loop
+```{r}
+
+while(totalEff < 0.9){ # considering 90% min efficiency target
+  n = n+1 # next agent
+  
+  effi = list()
+  covrge = data.frame(Interval = 0:23)
+  
+  for (startTime in 0:23)
+  {
+    # define days
+    
+    for(i in 1:ncol(DaysCombo))
+    {
+      dayStart = dayEnd <- DaysCombo[,i]
+      endTime <- startTime+shiftLength
+      
+      # schedule definition
+      sched <- data.frame(DStart = dayStart,
+                          DEnd = dayEnd,
+                          Tstart = startTime,
+                          TEnd = endTime)
+      # add to existing coverage
+      index <- paste(startTime,i,sep = "_")
+      
+      # covrge[index] <- TotalCoverage + coverage(sched)
+      newTotalCov <- TotalCoverage + coverage(sched)
+      colnames(newTotalCov) <- lapply(c("1_Date","2_Date","3_Date","4_Date","5_Date","6_Date","7_Date"), paste0,index)
+      covrge <- cbind(covrge,newTotalCov)
+      # check efficiency
+      effi[index] <- accuracy_F(newTotalCov)
+      
+      
+    }
+    
+    
+  }
+  maxEff <- effi[which.max(effi)]
+  
+  if(as.numeric(maxEff)>=as.numeric(totalEff))
+  {
+    totalEff <- as.numeric(maxEff)
+    
+    bestcombo <- names(which.max(effi))
+    TotalCoverage <- covrge %>% select(ends_with(paste0("e",bestcombo)))
+    
+    ScheduleShells <- ScheduleShells %>% add_row(AgentNumber = n, 
+                                                 days = DaysCombo[,as.numeric(substring(bestcombo,which(strsplit(bestcombo, "")[[1]]=="_")+1,nchar(bestcombo)))],
+                                                 shift = as.numeric(substring(bestcombo,1,which(strsplit(bestcombo, "")[[1]]=="_")-1)))
+    
+  }
+  
+  else { 
+    break
+    }
+  
+}
+
+
+```
+
+Necessary transformations of the tables. 
+```{r}
+### Coverage vs Requirement
+find_e <- function(text){
+  short <- substring(text,1,which(strsplit(text, "")[[1]]=="e"))
+  return(short)
+}
+
+
+colnames(TotalCoverage) <- lapply(colnames(TotalCoverage), find_e)
+TotalCoverage$Interval<- 0:23
+
+coverage_melt<- pivot_longer(TotalCoverage, -c(Interval), values_to = "StaffedHeads", names_to = "Date")
+
+colnames(cap_plan) <- c(lapply(1:7, paste0,"_Date"), "Interval")
+capPlan_melt <- pivot_longer(cap_plan, -c(Interval), values_to = "RequiredHeads", names_to = "Date")
+
+Requ_cover<- full_join(capPlan_melt,coverage_melt, by=c("Date","Interval"))
+
+
+```
+
+
+Displaying the results
+```{r}
+
+DT::datatable(ScheduleShells) # schedule
+
+print(paste0("Number of agents required: ", n))
+print(paste0("Efficiency Achieved: ", paste(round(100*totalEff,1),'%', sep = "")))
+
+```
+
+```{r}
+
+## Plot
+ggplot(Requ_cover, aes(x = Interval)) +
+  geom_col(aes(y = StaffedHeads),fill="tomato4")+
+  geom_line(aes(y = RequiredHeads),fill="darkgreen", size = 1.5)+
+  facet_wrap(~Date,ncol = 2)+
+  scale_x_continuous(breaks = seq(0,23,2))
+
+```
+
+Like you would expect, linear search is a very slow algorithm even more so on R. 
+
+## The App
+I have deployed a [Shiny App](https://tesfahunboshe.shinyapps.io/CP2HP/) that can generate both the minimum number of agents and the associated schedule per agent for your desired combinations of FTE's per interval, shift length, number of weekly working days per agent as well as the minimum staffing efficiency. The app works with default per interval FTE's data but feel free to try with your own (make sure the format is the same as the default one).
+
+
+
+## Related Task
+The next interesting task could be to figure out how to handle scenarios where 
+
+1. It is allowed to work longer/shorter shifts than 8 \
+2. There is no 40-hrs a week requirement \
+3. Multiple shifts are allowed during the day. \
+
+I will leave this to the reader. 
+
+<br />
+<br />
+<br />
+<br />
+I am crazy about data science and applying data science skills to workforce management. Reach me at [LinkedIn](https://www.linkedin.com/in/tesfahun-tegene-boshe/) if you wish to connect :)
+
+You may as well enjoy my other blogs at [RPubs](https://rpubs.com/Tesfahun_Boshe)
